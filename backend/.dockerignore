@@ -1,0 +1,11 @@
+*
+!Dockerfile
+!requirements.txt
+!alembic.ini
+!app/
+!app/*.py
+!migrations/
+!migrations/env.py
+!migrations/script.py.mako
+!migrations/versions/
+!migrations/versions/*.py
