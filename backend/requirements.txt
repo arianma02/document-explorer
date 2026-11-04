@@ -8,6 +8,7 @@ idna==3.20
 opentelemetry-api==1.45.2
 pydantic==2.14.2
 pydantic_core==2.50.2
+pypdf==6.21.4
 python-multipart==0.0.33
 starlette==1.10.0
 typing-inspection==0.4.4

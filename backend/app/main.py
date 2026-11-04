@@ -3,6 +3,8 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, UploadFile
 from pydantic import BaseModel
 
+from app.extraction import extract_text
+
 
 app = FastAPI(title="Document Explorer")
 MAX_DOCUMENT_BYTES = 2 * 1024 * 1024
@@ -19,27 +21,23 @@ def health():
 
 
 @app.post("/documents", response_model=ExtractedDocument)
-async def upload_document(file: UploadFile):
+def upload_document(file: UploadFile):
     try:
         filename = file.filename or ""
-        if Path(filename).suffix.lower() != ".txt":
-            raise HTTPException(415, "Upload a UTF-8 .txt file.")
+        extension = Path(filename).suffix.lower()
+        if extension not in (".txt", ".pdf"):
+            raise HTTPException(415, "Upload a UTF-8 .txt file or a PDF.")
 
         # Read one extra byte so oversized files are detected without loading all of them.
-        content = await file.read(MAX_DOCUMENT_BYTES + 1)
+        content = file.file.read(MAX_DOCUMENT_BYTES + 1)
         if len(content) > MAX_DOCUMENT_BYTES:
             raise HTTPException(413, "The document must be 2 MB or smaller.")
 
         try:
-            text = content.decode("utf-8-sig").strip()
-        except UnicodeDecodeError:
-            raise HTTPException(422, "The document must contain UTF-8 text.") from None
-
-        if not text:
-            raise HTTPException(422, "The document contains no text.")
-        if "\x00" in text:
-            raise HTTPException(422, "The document contains binary data.")
+            text = extract_text(content, extension)
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from None
 
         return ExtractedDocument(filename=filename, text=text)
     finally:
-        await file.close()
+        file.file.close()
