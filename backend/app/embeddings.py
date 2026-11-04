@@ -9,6 +9,7 @@ from tokenizers import Tokenizer
 
 MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 MODEL_REVISION = "1110a243fdf4706b3f48f1d95db1a4f5529b4d41"
+MODEL_ID = MODEL_NAME + "@" + MODEL_REVISION + "/onnx/model_quint8_avx2.onnx"
 MODEL_CACHE = Path(__file__).resolve().parents[1] / ".models"
 MAX_TOKENS = 256
 MODEL_FILES = {

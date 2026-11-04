@@ -1,18 +1,28 @@
+from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import PurePath
 
-from fastapi import FastAPI, HTTPException, Path, Query, UploadFile
+from fastapi import FastAPI, HTTPException, Path, Query, Request, UploadFile
 from fastapi.responses import JSONResponse
 from psycopg import OperationalError
 from pydantic import BaseModel
 
 from app.database import get_document, get_passages, list_documents, save_document
 from app.extraction import extract_pages
+from app.embeddings import EmbeddingModel, MODEL_ID
 from app.passages import split_passages
 
 
-app = FastAPI(title="Document Explorer")
+@asynccontextmanager
+async def lifespan(app):
+    """Load one shared model before the API starts accepting requests."""
+    app.state.embedding_model = EmbeddingModel()
+    yield
+
+
+app = FastAPI(title="Document Explorer", lifespan=lifespan)
 MAX_DOCUMENT_BYTES = 2 * 1024 * 1024
+MAX_DOCUMENT_PASSAGES = 100
 # PostgreSQL BIGINT is a signed 64-bit integer.
 MAX_DOCUMENT_ID = 2**63 - 1
 
@@ -49,10 +59,11 @@ def health():
 
 
 @app.post("/documents", response_model=Document, status_code=201)
-def upload_document(file: UploadFile):
+def upload_document(file: UploadFile, request: Request):
     """Save extracted UTF-8 text or PDF text, up to 2 MiB of uploaded bytes.
 
     The original file is not stored. Scanned PDFs requiring OCR are unsupported.
+    Documents are limited to 100 passages to bound synchronous processing time.
     """
     try:
         filename = file.filename or ""
@@ -67,11 +78,20 @@ def upload_document(file: UploadFile):
 
         try:
             pages = extract_pages(content, extension)
+            model = request.app.state.embedding_model
+            passages = split_passages(pages, model.tokenizer)
+            if len(passages) > MAX_DOCUMENT_PASSAGES:
+                raise HTTPException(
+                    413, "The document exceeds the demo limit of 100 passages."
+                )
+            for passage in passages:
+                passage["embedding"] = model.embed(passage["text"])
+                passage["embedding_model"] = MODEL_ID
         except ValueError as error:
             raise HTTPException(422, str(error)) from None
 
         text = "\n\n".join(page["text"] for page in pages).strip()
-        return save_document(filename, text, split_passages(pages))
+        return save_document(filename, text, passages)
     finally:
         file.file.close()
 

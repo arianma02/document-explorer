@@ -37,12 +37,17 @@ def save_document(filename: str, text: str, passages: list[dict]):
                     passage["position"],
                     passage["page_number"],
                     passage["text"],
+                    passage["embedding"],
+                    passage["embedding_model"],
                 )
             )
         # Both inserts share the transaction, so a failure cannot leave a partial document.
         with connection.cursor() as cursor:
             cursor.executemany(
-                "INSERT INTO passages (document_id, position, page_number, text) VALUES (%s, %s, %s, %s)",
+                """
+                INSERT INTO passages (document_id, position, page_number, text, embedding, embedding_model)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                """,
                 values,
             )
     return row

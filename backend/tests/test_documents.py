@@ -9,6 +9,7 @@ from psycopg import OperationalError
 from psycopg.errors import CheckViolation
 
 from app.database import get_connection
+from app.embeddings import MODEL_ID
 from app.main import app
 from tests.database_helpers import prepare_test_database
 
@@ -25,8 +26,7 @@ class DocumentUploadTests(unittest.TestCase):
     def setUp(self):
         with get_connection() as connection:
             connection.execute("DELETE FROM documents")
-        self.client = TestClient(app)
-        self.addCleanup(self.client.close)
+        self.client = self.enterContext(TestClient(app))
 
     def upload(self, content, filename="notes.txt", content_type="text/plain"):
         return self.client.post(
@@ -134,7 +134,7 @@ class DocumentUploadTests(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
 
     def test_failed_passage_insert_rolls_back_document(self):
-        invalid_passages = [{"position": 1, "page_number": None, "text": ""}]
+        invalid_passages = [{"position": 0, "page_number": None, "text": "Valid text"}]
         with patch("app.main.split_passages", return_value=invalid_passages):
             with self.assertRaises(CheckViolation):
                 self.upload(b"Valid document text")
@@ -168,6 +168,41 @@ class DocumentUploadTests(unittest.TestCase):
         ):
             with self.subTest(path=path):
                 self.assertEqual(self.client.get(path).status_code, 422)
+
+    def test_upload_stores_embeddings_with_model_version(self):
+        uploaded = self.upload(b"Solar panels generate electricity.").json()
+        with get_connection() as connection:
+            rows = connection.execute(
+                "SELECT embedding, embedding_model FROM passages WHERE document_id = %s",
+                (uploaded["id"],),
+            ).fetchall()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(len(rows[0]["embedding"]), 384)
+        self.assertEqual(rows[0]["embedding_model"], MODEL_ID)
+
+    def test_token_heavy_text_is_split_without_losing_words(self):
+        text = "electroencephalography " * 150
+        uploaded = self.upload(text.encode()).json()
+        response = self.client.get(f"/documents/{uploaded['id']}/passages")
+        passages = response.json()
+        self.assertGreater(len(passages), 1)
+        self.assertEqual(
+            " ".join(item["text"] for item in passages).split(), text.split()
+        )
+        for passage in passages:
+            tokens = app.state.embedding_model.tokenizer.encode(passage["text"])
+            self.assertLessEqual(len(tokens.ids), 256)
+
+    def test_rejects_documents_over_processing_limit(self):
+        text = "word " * (150 * 100 + 1)
+        response = self.upload(text.encode())
+        self.assertEqual(response.status_code, 413)
+        self.assertEqual(self.client.get("/documents").json(), [])
+
+    def test_rejects_single_word_that_exceeds_token_limit(self):
+        response = self.upload(("energy-" * 300).encode())
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(self.client.get("/documents").json(), [])
 
     def test_database_outage_returns_503_without_connection_details(self):
         with patch(
