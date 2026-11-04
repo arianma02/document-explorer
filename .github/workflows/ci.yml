@@ -86,7 +86,38 @@ jobs:
         run: npm run lint
 
       - name: Check types and build frontend
-        run: npm run build
+        run: npm run build -- --base=/document-explorer/
+        env:
+          VITE_API_URL: https://document-explorer.onrender.com
 
       - name: Test frontend API requests
         run: npm test
+
+      - name: Upload frontend for GitHub Pages
+        if: github.event_name == 'push'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: frontend/dist
+
+  deploy-frontend:
+    name: Deploy frontend
+    if: github.event_name == 'push'
+    needs: [backend-tests, frontend-checks]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v6
+
+      - name: Deploy frontend
+        id: deployment
+        uses: actions/deploy-pages@v5

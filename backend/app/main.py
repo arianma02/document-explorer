@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 from pathlib import PurePath
 
 from fastapi import FastAPI, HTTPException, Path, Query, Request, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from psycopg import OperationalError
 
@@ -28,6 +29,11 @@ async def lifespan(app):
 
 
 app = FastAPI(title="Document Explorer", lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://arianma02.github.io"],
+    allow_methods=["GET", "POST", "DELETE"],
+)
 MAX_DOCUMENT_BYTES = 2 * 1024 * 1024
 MAX_DOCUMENT_PASSAGES = 100
 # PostgreSQL BIGINT is a signed 64-bit integer.
