@@ -1,0 +1,20 @@
+# Local development database.
+services:
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: document_explorer
+      POSTGRES_USER: document_explorer
+      POSTGRES_PASSWORD: local_development_only
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U document_explorer -d document_explorer"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  postgres_data:

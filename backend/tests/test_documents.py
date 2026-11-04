@@ -1,11 +1,9 @@
 import unittest
-from io import BytesIO
 
 from fastapi.testclient import TestClient
-from pypdf import PdfWriter
-from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
 from app.main import app
+from tests.pdf_helpers import make_pdf
 
 
 class DocumentUploadTests(unittest.TestCase):
@@ -13,36 +11,28 @@ class DocumentUploadTests(unittest.TestCase):
         self.client = TestClient(app)
         self.addCleanup(self.client.close)
 
-    def upload(self, content, filename="notes.txt"):
+    def upload(self, content, filename="notes.txt", content_type="text/plain"):
         return self.client.post(
-            "/documents", files={"file": (filename, content, "text/plain")}
+            "/documents", files={"file": (filename, content, content_type)}
         )
 
-    def test_extracts_unicode_text(self):
-        response = self.upload("  Hello, världen!\nSecond paragraph.  ".encode("utf-8"))
+    def test_returns_filename_and_extracted_text(self):
+        response = self.upload(b"Hello")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(
-            response.json(),
-            {"filename": "notes.txt", "text": "Hello, världen!\nSecond paragraph."},
-        )
+        self.assertEqual(response.json(), {"filename": "notes.txt", "text": "Hello"})
 
-    def test_accepts_utf8_bom_and_uppercase_extension(self):
-        response = self.upload(b"\xef\xbb\xbfHello", "notes.TXT")
+    def test_accepts_uppercase_extension(self):
+        response = self.upload(b"Hello", "notes.TXT")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["text"], "Hello")
 
     def test_rejects_unsupported_extension(self):
         self.assertEqual(self.upload(b"Hello", "notes.docx").status_code, 415)
 
-    def test_rejects_empty_or_whitespace_only_text(self):
-        for content in (b"", b" \r\n\t"):
-            with self.subTest(content=content):
-                self.assertEqual(self.upload(content).status_code, 422)
-
-    def test_rejects_invalid_encoding_and_binary_data(self):
-        for content in (b"\xff\xfeHello", b"Hello\x00world"):
-            with self.subTest(content=content):
-                self.assertEqual(self.upload(content).status_code, 422)
+    def test_returns_extraction_errors_as_422(self):
+        response = self.upload(b"\xff")
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json()["detail"], "The document must contain UTF-8 text.")
 
     def test_enforces_size_boundary(self):
         limit = 2 * 1024 * 1024
@@ -52,44 +42,11 @@ class DocumentUploadTests(unittest.TestCase):
     def test_requires_a_file(self):
         self.assertEqual(self.client.post("/documents").status_code, 422)
 
-    def make_pdf(self, page_texts, password=None):
-        writer = PdfWriter()
-        font = DictionaryObject({
-            NameObject("/Type"): NameObject("/Font"),
-            NameObject("/Subtype"): NameObject("/Type1"),
-            NameObject("/BaseFont"): NameObject("/Helvetica"),
-        })
-        for text in page_texts:
-            page = writer.add_blank_page(width=300, height=300)
-            page[NameObject("/Resources")] = DictionaryObject({
-                NameObject("/Font"): DictionaryObject({NameObject("/F1"): font})
-            })
-            stream = DecodedStreamObject()
-            stream.set_data(f"BT /F1 12 Tf 20 200 Td ({text}) Tj ET".encode("ascii"))
-            page[NameObject("/Contents")] = stream
-        if password:
-            writer.encrypt(password)
-        output = BytesIO()
-        writer.write(output)
-        return output.getvalue()
-
-    def test_extracts_text_from_multiple_pdf_pages(self):
-        content = self.make_pdf(["First page", "Second page"])
-        response = self.upload(content, "notes.PDF")
+    def test_uploads_pdf_and_returns_extracted_text(self):
+        content = make_pdf(["First page", "Second page"])
+        response = self.upload(content, "notes.PDF", "application/pdf")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["text"], "First page\n\nSecond page")
-
-    def test_rejects_pdf_without_text(self):
-        response = self.upload(self.make_pdf([""]), "blank.pdf")
-        self.assertEqual(response.status_code, 422)
-        self.assertIn("No readable text", response.json()["detail"])
-
-    def test_rejects_encrypted_pdf(self):
-        response = self.upload(self.make_pdf(["Secret"], password="test"), "locked.pdf")
-        self.assertEqual(response.status_code, 422)
-        self.assertIn("Encrypted", response.json()["detail"])
-
-    def test_rejects_invalid_pdf(self):
-        response = self.upload(b"not a PDF", "broken.pdf")
-        self.assertEqual(response.status_code, 422)
-        self.assertIn("could not be read", response.json()["detail"])
+        self.assertEqual(
+            response.json(),
+            {"filename": "notes.PDF", "text": "First page\n\nSecond page"},
+        )
