@@ -87,3 +87,6 @@ jobs:
 
       - name: Check types and build frontend
         run: npm run build
+
+      - name: Test frontend API requests
+        run: npm test

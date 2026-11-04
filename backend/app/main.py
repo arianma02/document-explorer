@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from pathlib import PurePath
 
 from fastapi import FastAPI, HTTPException, Path, Query, Request, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from psycopg import OperationalError
 
 from app.database import (
@@ -10,6 +10,7 @@ from app.database import (
     get_graph_data,
     get_passages,
     list_documents,
+    remove_document,
     save_document,
 )
 from app.extraction import extract_pages
@@ -98,6 +99,14 @@ def document(document_id: int = Path(ge=1, le=MAX_DOCUMENT_ID)):
     if result is None:
         raise HTTPException(404, "Document not found.")
     return result
+
+
+@app.delete("/documents/{document_id}", status_code=204, response_class=Response)
+def delete_document(document_id: int = Path(ge=1, le=MAX_DOCUMENT_ID)):
+    """Delete a document and its passages through the database cascade."""
+    if not remove_document(document_id):
+        raise HTTPException(404, "Document not found.")
+    return Response(status_code=204)
 
 
 @app.get("/documents/{document_id}/passages", response_model=list[Passage])

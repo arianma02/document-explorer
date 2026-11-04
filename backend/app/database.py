@@ -72,6 +72,14 @@ def get_document(document_id: int):
         ).fetchone()
 
 
+def remove_document(document_id: int):
+    with get_connection() as connection:
+        deleted = connection.execute(
+            "DELETE FROM documents WHERE id = %s RETURNING id", (document_id,)
+        ).fetchone()
+    return deleted is not None
+
+
 def get_passages(document_id: int):
     with get_connection() as connection:
         return connection.execute(

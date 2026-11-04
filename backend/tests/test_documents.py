@@ -214,9 +214,53 @@ class DocumentUploadTests(unittest.TestCase):
                 self.client.get("/documents"),
                 self.client.get("/documents/1"),
                 self.client.get("/graph"),
+                self.client.delete("/documents/1"),
             ]
         for response in responses:
             self.assertEqual(response.status_code, 503)
             self.assertEqual(
                 response.json(), {"detail": "Database temporarily unavailable."}
             )
+
+    def test_delete_removes_only_the_selected_document_and_its_passages(self):
+        first = self.upload(b"Solar panels generate electricity.", "same.txt").json()
+        second = self.upload(b"Solar panels generate electricity.", "same.txt").json()
+        self.assertEqual(len(self.client.get("/graph").json()["edges"]), 1)
+        response = self.client.delete(f"/documents/{first['id']}")
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.content, b"")
+        self.assertEqual(self.client.get(f"/documents/{first['id']}").status_code, 404)
+        self.assertEqual(
+            self.client.get(f"/documents/{first['id']}/passages").status_code, 404
+        )
+        self.assertEqual(self.client.get(f"/documents/{second['id']}").json(), second)
+        with get_connection() as connection:
+            remaining = connection.execute(
+                "SELECT document_id FROM passages"
+            ).fetchall()
+        self.assertTrue(remaining)
+        self.assertTrue(all(row["document_id"] == second["id"] for row in remaining))
+        graph = self.client.get("/graph").json()
+        self.assertEqual([node["id"] for node in graph["nodes"]], [second["id"]])
+        self.assertEqual(graph["edges"], [])
+
+    def test_deleting_a_missing_document_returns_404(self):
+        self.assertEqual(
+            self.client.delete("/documents/9223372036854775807").status_code, 404
+        )
+
+    def test_delete_rejects_invalid_ids_without_removing_documents(self):
+        uploaded = self.upload(b"Keep this document").json()
+        for document_id in ("0", "-1", "not-a-number", "9223372036854775808"):
+            with self.subTest(document_id=document_id):
+                self.assertEqual(
+                    self.client.delete(f"/documents/{document_id}").status_code, 422
+                )
+        self.assertEqual(
+            self.client.get(f"/documents/{uploaded['id']}").status_code, 200
+        )
+
+    def test_unknown_api_routes_return_404(self):
+        for path in ("/does-not-exist", "/documents/1/does-not-exist"):
+            with self.subTest(path=path):
+                self.assertEqual(self.client.get(path).status_code, 404)
