@@ -1,13 +1,12 @@
-import os
-
 from alembic import context
 from sqlalchemy import create_engine
 from sqlalchemy.engine import make_url
 from sqlalchemy.pool import NullPool
 
+from app.database import get_database_url
 
-config = context.config
-url = make_url(os.environ.get("DATABASE_URL", config.get_main_option("sqlalchemy.url")))
+
+url = make_url(get_database_url())
 # Use Psycopg 3 even when a hosting provider supplies a plain postgresql:// URL.
 url = url.set(drivername="postgresql+psycopg")
 

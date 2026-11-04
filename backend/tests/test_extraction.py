@@ -1,7 +1,10 @@
 import unittest
+from pathlib import Path
 
 from app.extraction import extract_text
-from tests.pdf_helpers import make_pdf
+
+
+FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 
 class TextExtractionTests(unittest.TestCase):
@@ -15,7 +18,7 @@ class TextExtractionTests(unittest.TestCase):
     def test_rejects_empty_or_whitespace_only_text(self):
         for content in (b"", b" \r\n\t"):
             with self.subTest(content=content):
-                with self.assertRaisesRegex(ValueError, "No readable text"):
+                with self.assertRaisesRegex(ValueError, "The document contains no text"):
                     extract_text(content, ".txt")
 
     def test_rejects_invalid_encoding(self):
@@ -29,15 +32,15 @@ class TextExtractionTests(unittest.TestCase):
 
 class PdfExtractionTests(unittest.TestCase):
     def test_extracts_text_from_multiple_pages(self):
-        content = make_pdf(["First page", "Second page"])
+        content = (FIXTURES_DIR / "two_pages.pdf").read_bytes()
         self.assertEqual(extract_text(content, ".pdf"), "First page\n\nSecond page")
 
     def test_rejects_pdf_without_text(self):
         with self.assertRaisesRegex(ValueError, "No readable text"):
-            extract_text(make_pdf([""]), ".pdf")
+            extract_text((FIXTURES_DIR / "blank.pdf").read_bytes(), ".pdf")
 
     def test_rejects_encrypted_pdf(self):
-        content = make_pdf(["Secret"], password="test")
+        content = (FIXTURES_DIR / "encrypted.pdf").read_bytes()
         with self.assertRaisesRegex(ValueError, "Encrypted"):
             extract_text(content, ".pdf")
 
