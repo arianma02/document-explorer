@@ -1,16 +1,22 @@
 from contextlib import asynccontextmanager
-from datetime import datetime
 from pathlib import PurePath
 
 from fastapi import FastAPI, HTTPException, Path, Query, Request, UploadFile
 from fastapi.responses import JSONResponse
 from psycopg import OperationalError
-from pydantic import BaseModel
 
-from app.database import get_document, get_passages, list_documents, save_document
+from app.database import (
+    get_document,
+    get_graph_data,
+    get_passages,
+    list_documents,
+    save_document,
+)
 from app.extraction import extract_pages
 from app.embeddings import EmbeddingModel, MODEL_ID
 from app.passages import split_passages
+from app.relationships import build_graph
+from app.schemas import Document, DocumentGraph, DocumentSummary, Passage
 
 
 @asynccontextmanager
@@ -25,24 +31,6 @@ MAX_DOCUMENT_BYTES = 2 * 1024 * 1024
 MAX_DOCUMENT_PASSAGES = 100
 # PostgreSQL BIGINT is a signed 64-bit integer.
 MAX_DOCUMENT_ID = 2**63 - 1
-
-
-class DocumentSummary(BaseModel):
-    id: int
-    filename: str
-    created_at: datetime
-
-
-class Document(DocumentSummary):
-    text: str
-
-
-class Passage(BaseModel):
-    id: int
-    document_id: int
-    position: int
-    page_number: int | None
-    text: str
 
 
 @app.exception_handler(OperationalError)
@@ -117,3 +105,17 @@ def document_passages(document_id: int = Path(ge=1, le=MAX_DOCUMENT_ID)):
     if get_document(document_id) is None:
         raise HTTPException(404, "Document not found.")
     return get_passages(document_id)
+
+
+@app.get("/graph", response_model=DocumentGraph)
+def document_graph(
+    min_similarity: float = Query(default=0.5, ge=0, le=1),
+    limit: int = Query(default=20, ge=1, le=20),
+):
+    """Compare the newest documents and return evidence for each connection.
+
+    At most 20 documents are compared. Older passages without embeddings remain
+    readable but cannot produce edges until reprocessed or uploaded again.
+    """
+    documents, passages = get_graph_data(limit, MODEL_ID)
+    return build_graph(documents, passages, min_similarity)

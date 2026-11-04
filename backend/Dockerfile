@@ -7,7 +7,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN useradd --create-home app
 COPY app ./app
 RUN python -c "from app.embeddings import EmbeddingModel; EmbeddingModel()"
-ENV HF_HUB_OFFLINE=1
+ENV HF_HUB_OFFLINE=1 OPENBLAS_NUM_THREADS=1
 COPY alembic.ini .
 COPY migrations ./migrations
 

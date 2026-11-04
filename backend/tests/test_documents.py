@@ -213,6 +213,7 @@ class DocumentUploadTests(unittest.TestCase):
                 self.upload(b"Hello"),
                 self.client.get("/documents"),
                 self.client.get("/documents/1"),
+                self.client.get("/graph"),
             ]
         for response in responses:
             self.assertEqual(response.status_code, 503)

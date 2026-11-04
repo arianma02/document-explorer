@@ -81,3 +81,21 @@ def get_passages(document_id: int):
             """,
             (document_id,),
         ).fetchall()
+
+
+def get_graph_data(limit: int, model_id: str):
+    with get_connection() as connection:
+        documents = connection.execute(
+            "SELECT id, filename, created_at FROM documents ORDER BY id DESC LIMIT %s",
+            (limit,),
+        ).fetchall()
+        document_ids = [document["id"] for document in documents]
+        passages = connection.execute(
+            """
+            SELECT id, document_id, position, page_number, text, embedding FROM passages
+            WHERE document_id = ANY(%s) AND embedding_model = %s AND embedding IS NOT NULL
+            ORDER BY document_id, position
+            """,
+            (document_ids, model_id),
+        ).fetchall()
+    return documents, passages
