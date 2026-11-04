@@ -2,8 +2,11 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from alembic import command
+from alembic.config import Config
 from fastapi.testclient import TestClient
 from psycopg import OperationalError
+from psycopg.errors import CheckViolation
 
 from app.database import get_connection
 from app.main import app
@@ -106,6 +109,53 @@ class DocumentUploadTests(unittest.TestCase):
     def test_returns_404_for_missing_document(self):
         response = self.client.get("/documents/9223372036854775807")
         self.assertEqual(response.status_code, 404)
+
+    def test_returns_ordered_pdf_passages_with_page_numbers(self):
+        content = (FIXTURES_DIR / "two_pages.pdf").read_bytes()
+        uploaded = self.upload(content, "pages.pdf", "application/pdf").json()
+        response = self.client.get(f"/documents/{uploaded['id']}/passages")
+        self.assertEqual(response.status_code, 200)
+        passages = response.json()
+        self.assertEqual(
+            [item["text"] for item in passages], ["First page", "Second page"]
+        )
+        self.assertEqual([item["page_number"] for item in passages], [1, 2])
+        self.assertEqual([item["position"] for item in passages], [1, 2])
+        self.assertTrue(all(item["document_id"] == uploaded["id"] for item in passages))
+
+    def test_text_passages_have_no_page_number(self):
+        uploaded = self.upload(("word " * 151).encode()).json()
+        passages = self.client.get(f"/documents/{uploaded['id']}/passages").json()
+        self.assertEqual([len(item["text"].split()) for item in passages], [150, 1])
+        self.assertEqual([item["page_number"] for item in passages], [None, None])
+
+    def test_missing_document_passages_return_404(self):
+        response = self.client.get("/documents/9223372036854775807/passages")
+        self.assertEqual(response.status_code, 404)
+
+    def test_failed_passage_insert_rolls_back_document(self):
+        invalid_passages = [{"position": 1, "page_number": None, "text": ""}]
+        with patch("app.main.split_passages", return_value=invalid_passages):
+            with self.assertRaises(CheckViolation):
+                self.upload(b"Valid document text")
+        self.assertEqual(self.client.get("/documents").json(), [])
+
+    def test_migration_backfills_existing_documents_without_page_numbers(self):
+        config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
+        # Only the disposable database is downgraded to simulate an existing installation.
+        command.downgrade(config, "001")
+        original_text = "old  text\n" + "word " * 150
+        with get_connection() as connection:
+            row = connection.execute(
+                "INSERT INTO documents (filename, text) VALUES (%s, %s) RETURNING id",
+                ("existing.pdf", original_text),
+            ).fetchone()
+        command.upgrade(config, "head")
+        document = self.client.get(f"/documents/{row['id']}").json()
+        passages = self.client.get(f"/documents/{row['id']}/passages").json()
+        self.assertEqual(document["text"], original_text)
+        self.assertEqual([len(item["text"].split()) for item in passages], [150, 2])
+        self.assertEqual([item["page_number"] for item in passages], [None, None])
 
     def test_rejects_invalid_pagination_and_document_ids(self):
         for path in (

@@ -6,8 +6,9 @@ from fastapi.responses import JSONResponse
 from psycopg import OperationalError
 from pydantic import BaseModel
 
-from app.database import get_document, list_documents, save_document
-from app.extraction import extract_text
+from app.database import get_document, get_passages, list_documents, save_document
+from app.extraction import extract_pages
+from app.passages import split_passages
 
 
 app = FastAPI(title="Document Explorer")
@@ -23,6 +24,14 @@ class DocumentSummary(BaseModel):
 
 
 class Document(DocumentSummary):
+    text: str
+
+
+class Passage(BaseModel):
+    id: int
+    document_id: int
+    position: int
+    page_number: int | None
     text: str
 
 
@@ -57,11 +66,12 @@ def upload_document(file: UploadFile):
             raise HTTPException(413, "The document must be 2 MiB or smaller.")
 
         try:
-            text = extract_text(content, extension)
+            pages = extract_pages(content, extension)
         except ValueError as error:
             raise HTTPException(422, str(error)) from None
 
-        return save_document(filename, text)
+        text = "\n\n".join(page["text"] for page in pages).strip()
+        return save_document(filename, text, split_passages(pages))
     finally:
         file.file.close()
 
@@ -80,3 +90,10 @@ def document(document_id: int = Path(ge=1, le=MAX_DOCUMENT_ID)):
     if result is None:
         raise HTTPException(404, "Document not found.")
     return result
+
+
+@app.get("/documents/{document_id}/passages", response_model=list[Passage])
+def document_passages(document_id: int = Path(ge=1, le=MAX_DOCUMENT_ID)):
+    if get_document(document_id) is None:
+        raise HTTPException(404, "Document not found.")
+    return get_passages(document_id)

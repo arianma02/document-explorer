@@ -19,7 +19,7 @@ def get_connection():
     return psycopg.connect(get_database_url(), row_factory=dict_row, connect_timeout=5)
 
 
-def save_document(filename: str, text: str):
+def save_document(filename: str, text: str, passages: list[dict]):
     with get_connection() as connection:
         row = connection.execute(
             """
@@ -29,6 +29,22 @@ def save_document(filename: str, text: str):
             """,
             (filename, text),
         ).fetchone()
+        values = []
+        for passage in passages:
+            values.append(
+                (
+                    row["id"],
+                    passage["position"],
+                    passage["page_number"],
+                    passage["text"],
+                )
+            )
+        # Both inserts share the transaction, so a failure cannot leave a partial document.
+        with connection.cursor() as cursor:
+            cursor.executemany(
+                "INSERT INTO passages (document_id, position, page_number, text) VALUES (%s, %s, %s, %s)",
+                values,
+            )
     return row
 
 
@@ -49,3 +65,14 @@ def get_document(document_id: int):
             "SELECT id, filename, text, created_at FROM documents WHERE id = %s",
             (document_id,),
         ).fetchone()
+
+
+def get_passages(document_id: int):
+    with get_connection() as connection:
+        return connection.execute(
+            """
+            SELECT id, document_id, position, page_number, text FROM passages
+            WHERE document_id = %s ORDER BY position
+            """,
+            (document_id,),
+        ).fetchall()

@@ -4,9 +4,10 @@ from pypdf import PdfReader
 from pypdf.errors import PyPdfError
 
 
-def extract_text(content: bytes, extension: str) -> str:
-    """Extract UTF-8 text or PDF text using a lowercase .txt or .pdf extension.
+def extract_pages(content: bytes, extension: str) -> list[dict]:
+    """Return dictionaries containing text and page_number for .txt or .pdf files.
 
+    PDF page numbers start at 1. Text files use None for page_number.
     Raise ValueError for unsupported, unreadable, or empty content. No OCR is run.
     """
     if extension == ".txt":
@@ -15,7 +16,8 @@ def extract_text(content: bytes, extension: str) -> str:
         except UnicodeDecodeError:
             raise ValueError("The document must contain UTF-8 text.") from None
     elif extension == ".pdf":
-        text = extract_pdf_text(content)
+        pages = extract_pdf_pages(content)
+        text = "\n\n".join(page["text"] for page in pages).strip()
     else:
         raise ValueError("Unsupported document format.")
 
@@ -27,11 +29,13 @@ def extract_text(content: bytes, extension: str) -> str:
         raise ValueError("The document contains no text.")
     if "\x00" in text:
         raise ValueError("The document contains binary data.")
-    return text
+    if extension == ".txt":
+        return [{"page_number": None, "text": text}]
+    return pages
 
 
-def extract_pdf_text(content: bytes) -> str:
-    """Extract page text without preserving layout or explicit page numbers."""
+def extract_pdf_pages(content: bytes) -> list[dict]:
+    """Keep physical PDF page numbers, including pages without readable text."""
     try:
         reader = PdfReader(BytesIO(content))
         if reader.is_encrypted:
@@ -40,9 +44,11 @@ def extract_pdf_text(content: bytes) -> str:
             )
 
         pages = []
-        for page in reader.pages:
-            pages.append(page.extract_text() or "")
-        return "\n\n".join(pages).strip()
+        for page_number, page in enumerate(reader.pages, start=1):
+            pages.append(
+                {"page_number": page_number, "text": page.extract_text() or ""}
+            )
+        return pages
     except (PyPdfError, OSError, NotImplementedError):
         raise ValueError(
             "The PDF could not be read. It may be damaged or unsupported."
