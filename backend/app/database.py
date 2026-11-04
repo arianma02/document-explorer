@@ -4,9 +4,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 
-DEFAULT_DATABASE_URL = (
-    "postgresql://document_explorer:local_development_only@127.0.0.1:5433/document_explorer"
-)
+DEFAULT_DATABASE_URL = "postgresql://document_explorer:local_development_only@127.0.0.1:5433/document_explorer"
 
 
 def get_database_url():

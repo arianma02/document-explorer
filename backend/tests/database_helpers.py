@@ -25,7 +25,9 @@ def prepare_test_database():
 
     server_url = DEFAULT_DATABASE_URL.rsplit("/", 1)[0]
     test_database_url = server_url + "/" + database_name
-    database_url_override = patch("app.database.get_database_url", return_value=test_database_url)
+    database_url_override = patch(
+        "app.database.get_database_url", return_value=test_database_url
+    )
     database_url_override.start()
     unittest.addModuleCleanup(database_url_override.stop)
 

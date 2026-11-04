@@ -28,7 +28,9 @@ class Document(DocumentSummary):
 
 @app.exception_handler(OperationalError)
 def database_unavailable(request, error):
-    return JSONResponse(status_code=503, content={"detail": "Database temporarily unavailable."})
+    return JSONResponse(
+        status_code=503, content={"detail": "Database temporarily unavailable."}
+    )
 
 
 @app.get("/health")
@@ -65,7 +67,9 @@ def upload_document(file: UploadFile):
 
 
 @app.get("/documents", response_model=list[DocumentSummary])
-def documents(limit: int = Query(default=20, ge=1, le=100), offset: int = Query(default=0, ge=0)):
+def documents(
+    limit: int = Query(default=20, ge=1, le=100), offset: int = Query(default=0, ge=0)
+):
     """List newest documents first without including their full text."""
     return list_documents(limit, offset)
 

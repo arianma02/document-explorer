@@ -50,7 +50,9 @@ class DocumentUploadTests(unittest.TestCase):
     def test_returns_extraction_errors_as_422(self):
         response = self.upload(b"\xff")
         self.assertEqual(response.status_code, 422)
-        self.assertEqual(response.json()["detail"], "The document must contain UTF-8 text.")
+        self.assertEqual(
+            response.json()["detail"], "The document must contain UTF-8 text."
+        )
         self.assertEqual(self.client.get("/documents").json(), [])
 
     def test_enforces_size_boundary(self):
@@ -86,11 +88,16 @@ class DocumentUploadTests(unittest.TestCase):
             uploaded.append(self.upload(b"Hello", filename).json())
         response = self.client.get("/documents?limit=1&offset=1")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), [{
-            "id": uploaded[1]["id"],
-            "filename": "second.txt",
-            "created_at": uploaded[1]["created_at"],
-        }])
+        self.assertEqual(
+            response.json(),
+            [
+                {
+                    "id": uploaded[1]["id"],
+                    "filename": "second.txt",
+                    "created_at": uploaded[1]["created_at"],
+                }
+            ],
+        )
         self.assertEqual(
             [item["id"] for item in self.client.get("/documents").json()],
             [item["id"] for item in reversed(uploaded)],
@@ -102,15 +109,28 @@ class DocumentUploadTests(unittest.TestCase):
 
     def test_rejects_invalid_pagination_and_document_ids(self):
         for path in (
-            "/documents?limit=0", "/documents?limit=101", "/documents?offset=-1",
-            "/documents/0", "/documents/not-a-number", "/documents/9223372036854775808",
+            "/documents?limit=0",
+            "/documents?limit=101",
+            "/documents?offset=-1",
+            "/documents/0",
+            "/documents/not-a-number",
+            "/documents/9223372036854775808",
         ):
             with self.subTest(path=path):
                 self.assertEqual(self.client.get(path).status_code, 422)
 
     def test_database_outage_returns_503_without_connection_details(self):
-        with patch("app.database.get_connection", side_effect=OperationalError("private details")):
-            responses = [self.upload(b"Hello"), self.client.get("/documents"), self.client.get("/documents/1")]
+        with patch(
+            "app.database.get_connection",
+            side_effect=OperationalError("private details"),
+        ):
+            responses = [
+                self.upload(b"Hello"),
+                self.client.get("/documents"),
+                self.client.get("/documents/1"),
+            ]
         for response in responses:
             self.assertEqual(response.status_code, 503)
-            self.assertEqual(response.json(), {"detail": "Database temporarily unavailable."})
+            self.assertEqual(
+                response.json(), {"detail": "Database temporarily unavailable."}
+            )

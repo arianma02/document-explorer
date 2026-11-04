@@ -10,7 +10,9 @@ FIXTURES_DIR = Path(__file__).parent / "fixtures"
 class TextExtractionTests(unittest.TestCase):
     def test_preserves_unicode_and_internal_line_breaks(self):
         content = "  Hello, världen!\nSecond paragraph.  ".encode("utf-8")
-        self.assertEqual(extract_text(content, ".txt"), "Hello, världen!\nSecond paragraph.")
+        self.assertEqual(
+            extract_text(content, ".txt"), "Hello, världen!\nSecond paragraph."
+        )
 
     def test_removes_utf8_bom(self):
         self.assertEqual(extract_text(b"\xef\xbb\xbfHello", ".txt"), "Hello")
@@ -18,7 +20,9 @@ class TextExtractionTests(unittest.TestCase):
     def test_rejects_empty_or_whitespace_only_text(self):
         for content in (b"", b" \r\n\t"):
             with self.subTest(content=content):
-                with self.assertRaisesRegex(ValueError, "The document contains no text"):
+                with self.assertRaisesRegex(
+                    ValueError, "The document contains no text"
+                ):
                     extract_text(content, ".txt")
 
     def test_rejects_invalid_encoding(self):
