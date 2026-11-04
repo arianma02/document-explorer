@@ -1,4 +1,4 @@
-name: Backend CI
+name: CI
 
 on:
   push:
@@ -56,3 +56,34 @@ jobs:
 
       - name: Build deployment image
         run: docker build -t document-explorer-backend backend
+
+  frontend-checks:
+    name: Frontend checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check frontend formatting
+        run: npm run format:check
+
+      - name: Lint frontend
+        run: npm run lint
+
+      - name: Check types and build frontend
+        run: npm run build
