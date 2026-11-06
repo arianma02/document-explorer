@@ -1,47 +1,44 @@
-import unittest
-
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
 
+origin = "https://arianma02.github.io"
 
-class CorsTests(unittest.TestCase):
-    def setUp(self):
-        self.client = TestClient(app)
-        self.origin = "https://arianma02.github.io"
 
-    def test_frontend_can_read_responses_including_errors(self):
-        for path, status in [("/health", 200), ("/missing-page", 404)]:
-            with self.subTest(path=path):
-                response = self.client.get(path, headers={"Origin": self.origin})
-                self.assertEqual(response.status_code, status)
-                self.assertEqual(
-                    response.headers["access-control-allow-origin"], self.origin
-                )
+@pytest.fixture
+def client():
+    return TestClient(app)
 
-    def test_frontend_can_preflight_uploads_and_deletions(self):
-        for method in ["POST", "DELETE"]:
-            with self.subTest(method=method):
-                response = self.client.options(
-                    "/documents/1",
-                    headers={
-                        "Origin": self.origin,
-                        "Access-Control-Request-Method": method,
-                        "Access-Control-Request-Headers": "content-type",
-                    },
-                )
-                self.assertEqual(response.status_code, 200)
-                self.assertEqual(
-                    response.headers["access-control-allow-origin"], self.origin
-                )
 
-    def test_other_origins_do_not_receive_cors_permission(self):
-        response = self.client.options(
+def test_frontend_can_read_responses_including_errors(client):
+    for path, status in [("/health", 200), ("/missing-page", 404)]:
+        response = client.get(path, headers={"Origin": origin})
+        assert response.status_code == status
+        assert response.headers["access-control-allow-origin"] == origin
+
+
+def test_frontend_can_preflight_uploads_and_deletions(client):
+    for method in ["POST", "DELETE"]:
+        response = client.options(
             "/documents/1",
             headers={
-                "Origin": "https://example.com",
-                "Access-Control-Request-Method": "DELETE",
+                "Origin": origin,
+                "Access-Control-Request-Method": method,
+                "Access-Control-Request-Headers": "content-type",
             },
         )
-        self.assertEqual(response.status_code, 400)
-        self.assertNotIn("access-control-allow-origin", response.headers)
+        assert response.status_code == 200
+        assert response.headers["access-control-allow-origin"] == origin
+
+
+def test_other_origins_do_not_receive_cors_permission(client):
+    response = client.options(
+        "/documents/1",
+        headers={
+            "Origin": "https://example.com",
+            "Access-Control-Request-Method": "DELETE",
+        },
+    )
+    assert response.status_code == 400
+    assert "access-control-allow-origin" not in response.headers

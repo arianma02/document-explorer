@@ -59,7 +59,7 @@ The default database connection matches `compose.yaml` on port 5433. To use anot
 With the virtual environment active and local PostgreSQL running, from `backend/`:
 
 ```powershell
-python -m unittest discover -s tests -v
+python -m pytest -v
 python -m ruff check .
 python -m ruff format --check .
 ```
